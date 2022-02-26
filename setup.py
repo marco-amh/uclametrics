@@ -8,11 +8,11 @@ Created on Wed Aug 18 20:08:18 2021
 from setuptools import setup
 
 setup(
-   name='SuperImporter',
+   name='uclametrics',
    version='0.1.0',
    author='Marco Martinez Huerta',
    author_email='marco.martinez@ucla.edu',
-   packages=['SuperImporter'],
+   packages=['f_Bayesian_OLS'],
    url='http://pypi.python.org/pypi/PackageName/',
    license='unlicence',
    description='Pull data from many sites like Bank of Mexico, Inegi, Fred, IMF, WB, Google Trends',
