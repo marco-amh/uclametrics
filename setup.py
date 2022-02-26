@@ -14,7 +14,7 @@ setup(
    author_email='marco.martinez@ucla.edu',
    packages=['SuperImporter'],
    url='http://pypi.python.org/pypi/PackageName/',
-   license='MIT',
+   license='unlicence',
    description='Pull data from many sites like Bank of Mexico, Inegi, Fred, IMF, WB, Google Trends',
    #long_description=open('README.txt').read(),
    install_requires=[
