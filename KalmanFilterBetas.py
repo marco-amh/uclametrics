@@ -4,87 +4,81 @@ Created on Wed Jun 22 13:11:46 2022
 
 @author: D14371
 """
-
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
+from scipy.linalg import inv
 
-#np.random.seed(430)
-
-t = 500
-R=  0.01
-Q = 0.001
-F = 1
-mu = 0
-e1 = (np.random.normal(0,1,500) * np.sqrt(R)).reshape(-1,1)
-e2 = (np.random.normal(0,1,500) * np.sqrt(Q)).reshape(-1,1)
-beta = np.zeros((t,1))
-y = np.zeros((t,1))
-x = np.random.normal(0,1,500).reshape(-1,1)
-for i in range(1,t):
-    beta[i:i+1,:] = beta[i-1:i,:] + e2[i:i+1,:]
-    y[i:i+1,:] = x[i:i+1,:] * beta[i:i+1,:] + e1[i:i+1,:]
-    
-df = pd.DataFrame(np.concatenate([y,x],axis=1))
-   
 def Kalman_Filter(df,v,p,a=1,plot=False):
        df1 = pd.DataFrame(df.copy())
        names = df1.columns[0]
-       y = df1[df1.columns[0]]
-       x = df1[df1.columns[1]]
+       y = df.iloc[:,0:1].to_numpy()
+       x = df1.iloc[:,1:].to_numpy()
+       M = x.shape[1]
+       N = x.shape[0]
        # Initial parameters
-       fcast = []
-       fcast_error = []
-       kgain = []                   
-       p_tt = []
-       beta_tt=[]   
-       filter_error = []
+       fcast = np.ones((N,1)) * np.nan
+       fcast_error = np.ones((N,1)) * np.nan
+       kgain = np.ones((N,1)) * np.nan                   
+       p_tt = np.ones((N,M*M)) * np.nan
+       beta_tt= np.ones((N,M)) * np.nan
+       filter_error = np.ones((N,1)) * np.nan
        n = len(x)
        mu = 0                                           # Mean
-       a = a                                            # Prior coefficient of the state equation  (a < 1)
-       beta0 = beta11 = 0                                     # Initial x_0=0. This is for part A in this question
-       p11 = p00 = 1                                    # Initial variance state model
+       #a = a                                            # Prior coefficient of the state equation  (a < 1)
+       beta0 = beta11 = np.zeros((1,M))                                     # Initial x_0=0. This is for part A in this question
+       a = np.eye(M,M)
+       #a = 1
+
+       w11 = w00 =np.eye(M,M)                                    # Initial variance state model
        v = v                                            # variance state space model- this term adds noise - transitory
        w = p                                            # variance state representation - this is little noise - persistent
-
+       i=0
        for i in range(0,n):
-           beta10 = mu + (a * beta11)                         # 1st step: Estimation "state x_t" equation. Its equal to y_hat
-           p10 = (a * p11 * a ) + w                      # 2nd step: variance of the state variable
-
-           yhat = (a**2 * x[i] * beta10)   # changed - beta10                # a^2 * \hat x_t
-           eta = y[i] - yhat
+           beta10 = mu + ( beta11 @ a.T)                         # 1st step: Estimation "state x_t" equation. Its equal to y_hat
            
-           feta = (x[i] * p10 * x[i]) + v                               # add variance of the presistent noise, v
-           k = (p10 * x[i]) * (1/feta)                           # Kalman Gain in time t: (a^2 * \sigma^2 + \sigma^2_w )/(a^2 * \sigma^2 + \sigma^2_w +\sigma^2_v)
+           yhat = (x[i:i+1,:] @ beta10.T).T       # changed - beta10                # a^2 * \hat x_t
+           residual = y[i:i+1,:] - yhat                               # forecast error
            
-           beta11 = (beta10 * a) + (k * eta)         # Filtered state variable - Latent state equation of x
-           p11 = p10 - k * x[i] * p10                          # Variance of state variable at time t
+           w10 = (a @ w11 @ a.T ) + w                      # 2nd step: variance of the state variable
+           v10 = (x[i:i+1,:] @ w10.T @ x[i:i+1,:].T) + v                               # add variance of the presistent noise, v
            
-           fcast.append(yhat)                   # a^2 * \hat x_t
-           fcast_error.append( x[i] - ((a**2) * beta10) )  # forecast error: x_t - (a^2 * \hat x_t)
-           kgain.append(p10 * (1/feta))                 # Kalman Gain - cumulative
-           p_tt.append(p11)                             # Variance of state variable - appended
-           beta_tt.append(beta11)                             # Save filters state variable
-           filter_error.append(x[i] - beta11)              # Residual / One-step ahead forecast error
+           k = (w10 @ x[i:i+1,:].T) @ inv(v10)                          # Kalman Gain in time t: (a^2 * \sigma^2 + \sigma^2_w )/(a^2 * \sigma^2 + \sigma^2_w +\sigma^2_v)
+           beta11 = (beta10.T + (k * residual.T)).T        # Filtered state variable - Latent state equation of x
+           w11 = w10 - (k @ x[i:i+1,:] @ w10)                          # Variance of state variable at time t
+  
+ 
+           fcast[i:i+1,:] = yhat                    
+           fcast_error[i:i+1,:]     = residual 
+           #kgain.append(w10 @ inv(v10)   )                # Kalman Gain - cumulative
+           p_tt[i:i+1,:]            = w11.reshape(-1,1).T                             # Variance of state variable - appended
+           beta_tt[i:i+1,:]         = beta11                             # Save filters state variable
+           filter_error[i:i+1,:]    = residual              # Residual / One-step ahead forecast error
 
        #x = x
-       df1[str(df1.columns[0])+'_filtered'] = beta_tt
-       df1[str(df1.columns[0])+'_gap'] = x-beta_tt
+       fcast = pd.DataFrame(fcast)
+       
+       fcast_error =pd.DataFrame(fcast_error)
+       #kgain =pd.DataFrame(kgain)
+       p_tt = pd.DataFrame(p_tt)
+       beta_tt = pd.DataFrame(beta_tt, index=df.index)
+       filter_error = pd.DataFrame(filter_error)
+      ## df1[str(df1.columns[0])+'_gap'] = x-beta_tt
        #df1[str(df1.columns[0])+'_filtered'] = x_tt
        #df1[str(df1.columns[0])+'_gap'] = x-x_tt
-       df1[str(df1.columns[0])+'_variance_state'] = p_tt
-       df1[str(df1.columns[0])+'_gain'] = kgain
+      ## df1[str(df1.columns[0])+'_variance_state'] = p_tt
+      ## df1[str(df1.columns[0])+'_gain'] = kgain
        #df1[str(df1.columns[0])+'_fcast_h1'] = fcast
-       print('the kalman gain is: ', str(kgain[-1]))
+       #print('the kalman gain is: ', str(kgain[-1]))
 
 
        
        if plot == True:
            plt.figure(figsize=(16,8))
            sns.set_style('ticks')
-           line, = plt.plot(x.index,beta, lw=2, linestyle='-', color='black', label='True beta')
-           line, = plt.plot(x.index,beta_tt, lw=2, linestyle='-', color='red', label='Estimated State')
+           line, = plt.plot(df1.index,beta, lw=2, linestyle='-', color='black', label='True beta')
+           line, = plt.plot(df1.index,beta_tt, lw=2, linestyle='-', color='red', label='Estimated State')
            
            plt.legend(frameon=False, title='', loc='best') #edgecolor='white'
            plt.axhline(y=0, color='black', linestyle='-')
@@ -93,6 +87,97 @@ def Kalman_Filter(df,v,p,a=1,plot=False):
            plt.xticks(np.arange(0, len(df1), step=round(len(df1)*.05)), rotation=90)
            plt.show() #plot           
 
-       return df1
-   
-df1 = Kalman_Filter(df=df,v=.01,p=0.001,a=1,plot=True)
+       return beta_tt, fcast
+
+'''
+np.random.seed(430)
+
+t = 500
+v =  0.01
+w1 = 0.001
+w2 = 0.05
+w3 = 0.00005
+
+e1 = (np.random.normal(0,1,t) * np.sqrt(v)).reshape(-1,1)
+e2 = (np.random.normal(0,1,t) * np.sqrt(w1)).reshape(-1,1)
+e3 = (np.random.normal(0,1,t) * np.sqrt(w2)).reshape(-1,1)
+e4 = (np.random.normal(0,1,t) * np.sqrt(w3)).reshape(-1,1)
+
+beta1 = np.zeros((t,1))
+beta2 = np.zeros((t,1))
+beta3 = np.zeros((t,1))
+
+y = np.zeros((t,1))
+x1 = np.random.normal(0,1,t).reshape(-1,1)
+x2 = np.random.normal(0,1,t).reshape(-1,1)
+x3 = np.random.normal(0,1,t).reshape(-1,1)
+
+for i in range(1,t):
+    beta1[i:i+1,:] = beta1[i-1:i,:] + e2[i:i+1,:]
+    beta2[i:i+1,:] = beta2[i-1:i,:] + e3[i:i+1,:]
+    beta3[i:i+1,:] = beta3[i-1:i,:] + e4[i:i+1,:]
+    y[i:i+1,:] = (x1[i:i+1,:] * beta1[i:i+1,:]) + (x2[i:i+1,:] * beta2[i:i+1,:] ) +(x3[i:i+1,:] * beta3[i:i+1,:] )+ e1[i:i+1,:] 
+    
+    
+df = pd.DataFrame(np.concatenate([y,x1,x2,x3],axis=1))
+
+p =  np.diag([w1,w2,w3])
+
+
+df1,df2 = Kalman_Filter(df=df, v=v, p = p, a=1, plot=False)
+
+#df1.plot()
+b1 = pd.concat([pd.DataFrame(beta1),df1.iloc[:,0:1]],axis=1)
+b2 = pd.concat([pd.DataFrame(beta2),df1.iloc[:,1:2]],axis=1)
+b3 = pd.concat([pd.DataFrame(beta3),df1.iloc[:,2:3]],axis=1)
+b4 = pd.concat([pd.DataFrame(y),df2],axis=1)
+# Beta 1 state space
+plt.figure(figsize=(16,8))
+sns.set_style('ticks')
+line, = plt.plot(df1.index,b1.iloc[:,0:1].values, lw=2, linestyle='-', color='black', label='True beta')
+line, = plt.plot(df1.index,b1.iloc[:,1:2].values, lw=2, linestyle='-', color='red', label='Estimated State')
+plt.legend(frameon=False, title='', loc='best') #edgecolor='white'
+plt.axhline(y=0, color='black', linestyle='-')
+sns.despine()
+plt.gca().set(title='Kalman Filter', xlabel = 'Date')
+plt.xticks(np.arange(0, len(df1), step=round(len(df1)*.05)), rotation=90)
+plt.show() #plot           
+
+
+# Beta 2 state space
+plt.figure(figsize=(16,8))
+sns.set_style('ticks')
+line, = plt.plot(df1.index,b2.iloc[:,0:1].values, lw=2, linestyle='-', color='black', label='True beta')
+line, = plt.plot(df1.index,b2.iloc[:,1:2].values, lw=2, linestyle='-', color='red', label='Estimated State')
+plt.legend(frameon=False, title='', loc='best') #edgecolor='white'
+plt.axhline(y=0, color='black', linestyle='-')
+sns.despine()
+plt.gca().set(title='Kalman Filter', xlabel = 'Date')
+plt.xticks(np.arange(0, len(df1), step=round(len(df1)*.05)), rotation=90)
+plt.show() #plot         
+
+# Beta 3 state space
+plt.figure(figsize=(16,8))
+sns.set_style('ticks')
+line, = plt.plot(df1.index,b3.iloc[:,0:1].values, lw=2, linestyle='-', color='black', label='True beta')
+line, = plt.plot(df1.index,b3.iloc[:,1:2].values, lw=2, linestyle='-', color='red', label='Estimated State')
+plt.legend(frameon=False, title='', loc='best') #edgecolor='white'
+plt.axhline(y=0, color='black', linestyle='-')
+sns.despine()
+plt.gca().set(title='Kalman Filter', xlabel = 'Date')
+plt.xticks(np.arange(0, len(df1), step=round(len(df1)*.05)), rotation=90)
+plt.show() #plot   
+
+
+# Filter state space
+plt.figure(figsize=(16,8))
+sns.set_style('ticks')
+line, = plt.plot(df1.index,b4.iloc[:,0:1].values, lw=2, linestyle='-', color='black', label='Observed')
+line, = plt.plot(df1.index,b4.iloc[:,1:2].values, lw=2, linestyle='-', color='red', label='Estimated State')
+plt.legend(frameon=False, title='', loc='best') #edgecolor='white'
+plt.axhline(y=0, color='black', linestyle='-')
+sns.despine()
+plt.gca().set(title='Kalman Filter', xlabel = 'Date')
+plt.xticks(np.arange(0, len(df1), step=round(len(df1)*.05)), rotation=90)
+plt.show() #plot 
+'''
